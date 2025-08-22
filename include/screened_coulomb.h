@@ -714,7 +714,7 @@ public:
         mu_max = mu_max * mu_max;
         eloss_functor_ F(e, mu_max);
         detail::gc_pos_quad<eloss_functor_, N> gc(F);
-        return 4 * e * mu_max * mu_max * gc();
+        return 8 * e * mu_max * mu_max * gc();
     }
 
 private:
@@ -725,9 +725,10 @@ private:
         eloss_functor_(double e, double mumax) : e_(e), mumax_(mumax) { }
         double operator()(double u)
         {
-            double mu = mumax_ * u;
+            double u2 = u * u;
+            double mu = mumax_ * u2;
             double thetaCM = 2. * std::asin(std::sqrt(mu));
-            return crossSection(e_, thetaCM, 1e-10) * u;
+            return crossSection(e_, thetaCM, 1e-10) * u * u2;
         }
     };
 
