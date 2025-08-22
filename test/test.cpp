@@ -8,56 +8,59 @@
 using namespace std::chrono;
 using namespace std;
 
-#define NGS 4
+#define NGS 64
 #define NITER 3000000
 
-template <Quadrature Q_>
+template <Quadrature Q_, int N_>
 void test1();
 
-template <Quadrature Q_>
+template <Screening S_, Quadrature Q_, int N>
 void test2();
 
 template <Screening S_>
 void test3();
 
-template <Screening S_, Quadrature Q_>
-void test4(size_t N);
+template <Screening S_, Quadrature Q_, int N>
+void test4(size_t M);
 
 int main()
 {
     const char *sep = "\n==========================================================\n\n";
 
-    test1<Quadrature::GaussChebyshev>();
+    // test1<Quadrature::GaussChebyshev, NGS>();
 
-    cout << sep;
-    test1<Quadrature::Lobatto4>();
+    // cout << sep;
+    // test1<Quadrature::Lobatto4, 4>();
 
-    cout << sep;
-    test2<Quadrature::GaussChebyshev>();
+    // cout << sep;
+    test2<Screening::ZBL, Quadrature::GaussChebyshev, NGS>();
 
-    cout << sep;
-    test2<Quadrature::Lobatto4>();
+    // cout << sep;
+    // test2<Screening::ZBL, Quadrature::Lobatto4, 4>();
 
-    cout << sep;
-    test3<Screening::Moliere>();
+    // cout << sep;
+    // test2<Screening::ZBL, Quadrature::Magic, 0>();
 
-    cout << sep;
-    test3<Screening::ZBL>();
+    // cout << sep;
+    // test2<Screening::Moliere, Quadrature::GaussChebyshev, NGS>();
 
-    cout << sep;
-    test3<Screening::Bohr>();
+    // cout << sep;
+    // test2<Screening::Bohr, Quadrature::GaussChebyshev, NGS>();
 
-    cout << sep;
-    test3<Screening::KrC>();
+    // cout << sep;
+    // test2<Screening::KrC, Quadrature::GaussChebyshev, NGS>();
 
-    cout << sep;
-    test4<Screening::ZBL, Quadrature::GaussChebyshev>(NITER);
+    // cout << sep;
+    // test4<Screening::ZBL, Quadrature::GaussChebyshev, NGS>(NITER);
 
-    cout << sep;
-    test4<Screening::ZBL, Quadrature::Lobatto4>(NITER);
+    // cout << sep;
+    // test4<Screening::ZBL, Quadrature::Lobatto4, 4>(NITER);
 
-    cout << sep;
-    test4<Screening::ZBL_MAGIC, Quadrature::Lobatto4>(NITER);
+    // cout << sep;
+    // test4<Screening::ZBL, Quadrature::Magic, 0>(NITER);
+
+    // cout << sep;
+    // test4<Screening::None, Quadrature::None, 0>(NITER);
 
     return 0;
 }
@@ -105,15 +108,17 @@ const double xs_ref[] = { 56.369466, 57.394136, 60.549823, 66.086753, 74.44714, 
 //                           1698761.3, 3214856.6, 6117806.4, 11686785,  22381146,     42925414,
 //                           82391622,  158176770, 303624660, 582537600, 1.1168471e+09 };
 
-template <Quadrature Q_>
+template <Quadrature Q_, int N_>
 void test1()
 {
-    typedef xs_cms<Screening::Moliere, Q_, NGS> XS;
+    typedef xs_cms<Screening::Moliere, Q_, N_> XS;
 
     cout << "TEST-1" << endl;
     cout << "Compare screened_coulomb to refence data from Robinson1970" << endl;
     cout << "Screening:  " << XS::screeningName() << endl;
-    cout << "Quadrature: " << XS::quadratureName() << endl << endl;
+    cout << "Quadrature: " << XS::quadratureName() << endl;
+    cout << "Order: " << XS::quadratureOrder() << endl;
+    cout << endl;
 
     double e = 0.01;
     cout << "e = " << e << endl << endl;
@@ -155,52 +160,63 @@ void test1()
     }
 }
 
-template <Quadrature Q_>
+template <Screening S_, Quadrature Q_, int N>
 void test2()
 {
     double e[] = { 1e-3, 1e-3, 0.1, 0.1, 10., 10. };
     double s[] = { 0.5, 20, 0.2, 8.0, 0.025, 1.0 };
 
-    typedef xs_cms<Screening::ZBL, Q_, NGS> zbl;
-    typedef xs_cms<Screening::ZBL_MAGIC> zblm;
+    typedef xs_cms<S_, Quadrature::GaussChebyshev, 128> xs0;
+    typedef xs_cms<S_, Q_, N> xs1;
 
     cout << "TEST-2" << endl;
-    cout << "Compare quadrature to MAGIC approx." << endl;
-    cout << "Screening:  " << zbl::screeningName() << endl;
-    cout << "Quadrature: " << zbl::quadratureName() << endl << endl;
+    cout << "Compare quadrature to hig-precision Gauss-Cheb." << endl;
+    cout << "Screening:  " << xs1::screeningName() << endl;
+    cout << "Quadrature: " << xs1::quadratureName() << endl;
+    cout << "Order: " << xs1::quadratureOrder() << endl;
+    cout << endl;
 
     int w1 = 14;
 
     cout << setw(6) << "e" << ' ';
     cout << setw(6) << "s" << ' ';
     cout << setw(3 * w1 + 2) << "Scattering Angle Th (Deg)" << ' ';
-    cout << setw(3 * w1 + 3) << "Cross-section XS (a^2/4π)" << endl;
+    cout << setw(3 * w1 + 2) << "Cross-section XS (a^2/4π)" << ' ';
+    cout << setw(3 * w1 + 3) << "stopping XS sn" << endl;
     cout << endl;
     cout << setw(6) << " " << ' ';
     cout << setw(6) << " " << ' ';
-    cout << setw(w1) << "TH_ZBL" << ' ';
-    cout << setw(w1) << "TH_MAGIC" << ' ';
+    cout << setw(w1) << "TH" << ' ';
+    cout << setw(w1) << "TH0" << ' ';
     cout << setw(w1) << "Rel. Diff" << ' ';
-    cout << setw(w1) << "XS_ZBL" << ' ';
-    cout << setw(w1) << "XS_MAGIC" << ' ';
+    cout << setw(w1) << "XS" << ' ';
+    cout << setw(w1) << "XS0" << ' ';
+    cout << setw(w1) << "Rel. Diff" << ' ';
+    cout << setw(w1) << "SN" << ' ';
+    cout << setw(w1) << "SN0" << ' ';
     cout << setw(w1) << "Rel. Diff" << endl;
 
     for (int i = 0; i < 6; ++i) {
-        double th = zbl::theta(e[i], s[i]);
-        double xs = zbl::crossSection(e[i], th);
-        double thm = zblm::theta(e[i], s[i]);
-        double xsm = zblm::crossSection(e[i], thm);
-        th *= 180 / M_PI;
-        thm *= 180 / M_PI;
+        double th1 = xs1::theta(e[i], s[i]);
+        double x1 = xs1::crossSection(e[i], th1);
+        double sn1 = xs1::sn(e[i]);
+        double th0 = xs0::theta(e[i], s[i]);
+        double x0 = xs0::crossSection(e[i], th0);
+        double sn0 = xs0::sn(e[i]);
+        th1 *= 180 / M_PI;
+        th0 *= 180 / M_PI;
         cout << setprecision(2);
         cout << setw(6) << e[i] << ' ';
         cout << setw(6) << s[i] << ' ';
-        cout << setprecision(9) << setw(w1) << th << ' ';
-        cout << setw(w1) << thm << ' ';
-        cout << setprecision(2) << setw(w1) << (th - thm) / th << ' ';
-        cout << setprecision(9) << setw(w1) << xs << ' ';
-        cout << setw(w1) << xsm << ' ';
-        cout << setprecision(2) << setw(w1) << (xs - xsm) / xs << endl;
+        cout << setprecision(9) << setw(w1) << th1 << ' ';
+        cout << setw(w1) << th0 << ' ';
+        cout << setprecision(2) << setw(w1) << (th1 - th0) / th0 << ' ';
+        cout << setprecision(9) << setw(w1) << x1 << ' ';
+        cout << setw(w1) << x0 << ' ';
+        cout << setprecision(2) << setw(w1) << (x1 - x0) / x0 << ' ';
+        cout << setprecision(9) << setw(w1) << sn1 << ' ';
+        cout << setw(w1) << sn0 << ' ';
+        cout << setprecision(2) << setw(w1) << (sn1 - sn0) / sn0 << endl;
     }
 }
 
@@ -216,6 +232,8 @@ void test3()
     cout << "TEST-3" << endl;
     cout << "Compare Gauss-Chebyshev to 4-th order Lobatto" << endl;
     cout << "Screening:  " << zbl1::screeningName() << endl << endl;
+    cout << "GS Order: " << zbl1::quadratureOrder() << endl;
+    cout << endl;
 
     int w1 = 14;
 
@@ -254,19 +272,20 @@ void test3()
     }
 }
 
-template <Screening S_, Quadrature Q_>
-void test4(size_t N)
+template <Screening S_, Quadrature Q_, int N>
+void test4(size_t M)
 {
     double e[] = { 1e-3, 1e-3, 0.1, 0.1, 10., 10. };
     double s[] = { 0.5, 20, 0.2, 8.0, 0.025, 1.0 };
 
-    typedef xs_cms<S_, Q_, NGS> XS;
+    typedef xs_cms<S_, Q_, N> XS;
 
     cout << "TEST-4" << endl;
     cout << "Timing benchmark" << endl;
     cout << "Screening:   " << XS::screeningName() << endl;
     cout << "Quadrature:  " << XS::quadratureName() << endl;
-    cout << "Iterations:  " << N << endl;
+    cout << "Order:  " << XS::quadratureOrder() << endl;
+    cout << "Iterations:  " << M << endl;
     cout << endl;
 
     random_device rd; // Will be used to obtain a seed for the random number engine
@@ -284,8 +303,8 @@ void test4(size_t N)
 
     double th = 0.0, se = 0.0, ss = 0.0;
 
-    for (size_t i = 0; i < N; i++) {
-        double e = log10(ue(gen));
+    for (size_t i = 0; i < M; i++) {
+        double e = std::pow(10.0, ue(gen));
         double s = us(gen);
         se += e;
         ss += s;
@@ -306,8 +325,8 @@ void test4(size_t N)
     th = 0.0, se = 0.0, ss = 0.0;
     gen.seed();
 
-    for (size_t i = 0; i < N; i++) {
-        double e = log10(ue(gen));
+    for (size_t i = 0; i < M; i++) {
+        double e = std::pow(10.0, ue(gen));
         double s = us(gen);
         se += e;
         ss += s;
@@ -320,5 +339,5 @@ void test4(size_t N)
     cout << "done." << endl << endl;
 
     cout << setprecision(3);
-    cout << "dt/theta: " << (dt1.count() - dt2.count()) / N << " ns" << std::endl;
+    cout << "dt/theta: " << (dt1.count() - dt2.count()) / M << " ns" << std::endl;
 }

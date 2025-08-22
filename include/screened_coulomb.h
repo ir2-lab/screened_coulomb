@@ -26,7 +26,6 @@ enum class Screening {
     KrC = 2, /**< Kr-C */
     Moliere = 3, /**< Moliere */
     ZBL = 4, /**< Ziegler-Biersack-Littmark (ZBL) Universal */
-    ZBL_MAGIC = 5, /**< ZBL utilizing the MAGIC interpolation formula */
     Invalid = -1 /**< Invalid screening value */
 };
 
@@ -155,28 +154,6 @@ struct screening_function<Screening::ZBL>
                 + C[3] * exp(-A[3] * x);
     }
 };
-// Explicit specialization for the Ziegler-Biersack-Littmark (ZBL) potential
-template <>
-struct screening_function<Screening::ZBL_MAGIC>
-{
-    static Screening screeningType() { return Screening::ZBL_MAGIC; }
-    static const char *screeningName() { return "Ziegler-Biersack-Littmark (ZBL) MAGICK interp"; }
-    static double screeningLength(int Z1, int Z2)
-    {
-        return SCREENCONST * BOHR_RADIUS / (std::pow(Z1, 0.23) + std::pow(Z2, 0.23));
-    }
-
-    /* Universal screening function coefficients TRIM85 */
-    constexpr static const int N = 4;
-    constexpr static const double C[] = { 0.18175, 0.50986, 0.28022, 0.028171 };
-    constexpr static const double A[] = { 3.19980, 0.94229, 0.40290, 0.201620 };
-
-    double operator()(const double &x) const
-    {
-        return C[0] * exp(-A[0] * x) + C[1] * exp(-A[1] * x) + C[2] * exp(-A[2] * x)
-                + C[3] * exp(-A[3] * x);
-    }
-};
 
 /**
  * @brief The xs_cms_base class implements basic components for screened Coulomb scattering
@@ -283,7 +260,9 @@ public:
  */
 enum class Quadrature {
     GaussChebyshev, /**< Gauss-Chebushev scheme */
-    Lobatto4 /**< 4-th order Lobatto scheme */
+    Lobatto4, /**< 4-th order Lobatto scheme */
+    Magic, /**<  MAGIC interpolation formula of Biersack & Haggmark */
+    None /**<  No quad needed */
 };
 
 namespace detail {
@@ -293,11 +272,11 @@ namespace detail {
  *
  * Approximates the integral
  * \f[
- * I = \int_0^1 {f(x)\, w(x)\, dx}
+ * I = \int_0^1 {f(x)\, dx} = \int_0^1 {[f(x)/w(x)]\, w(x)\, dx}
  * \f]
  * where \f$ w(x)=(1-x^2)^{-1/2} \f$ with the following expression
  * \f[
- * I \approx w_N \sum_{i=0}^{N-1}{f(x_i)}
+ * I \approx w_N \sum_{i=0}^{N-1}{f(x_i)/w(x_i)}
  * \f]
  * where \f$ w_N = \frac{\pi}{2N} \f$ and
  * \f[
@@ -320,20 +299,45 @@ public:
     {
         double s{ 0.0 };
         for (int i = 0; i < N; ++i)
-            s += func_(u_[i]);
-        return w_ * s;
+            s += w_[i] * func_(u_[i]);
+        return s;
     }
 
 private:
     Functor &func_;
-    constexpr static double w_ = 0.5 * M_PI / N;
     constexpr static auto u_{ []() constexpr {
+        const double d = 0.5 * M_PI / N;
         std::array<double, N> u{};
         for (int i = 0; i < N; ++i) {
-            u[i] = std::cos(w_ * (i + 0.5));
+            u[i] = std::cos(d * (i + 0.5));
         }
         return u;
     }() };
+    constexpr static auto w_{ []() constexpr {
+        const double d = 0.5 * M_PI / N;
+        std::array<double, N> w{};
+        for (int i = 0; i < N; ++i) {
+            double u = std::cos(d * (i + 0.5));
+            w[i] = d * std::sqrt(1 - u * u);
+        }
+        return w;
+    }() };
+};
+
+/// The preferred quadrature order
+template <Quadrature QuadType>
+constexpr int preferredQuadOrder()
+{
+    switch (QuadType) {
+    case Quadrature::GaussChebyshev:
+        return 16;
+    case Quadrature::Lobatto4:
+        return 4;
+    case Quadrature::Magic:
+        return 0;
+    case Quadrature::None:
+        return 0;
+    }
 };
 
 /**
@@ -398,36 +402,39 @@ private:
  *   QuadType The type of quadrature to use
  */
 template <Screening ScreeningType, Quadrature QuadType, int N>
-struct quad_integrator
+struct theta_integrator
 {
     /**
-     * @brief Returns the value of the integral
+     * @brief Returns the value of \fS \theta \fS
      * @param e reduced energy
      * @param s reduced impact parameter
      * @param x0 apsis
-     * @param nsum number of quadrature terms (only for the Gauss-Chebyshev method)
      * @return
      */
-    static double integrate(double e, double s, double x0);
+    static double theta(double e, double s, double x0);
 
     /// The name of the quadrature scheme
     static const char *quadratureName();
 
-    /// The type of screening as a \ref Screening enum type
+    /// The type of quadrature as a \ref Quadrature enum type
     static Quadrature quadratureType() { return QuadType; }
+
+    /// The quadrature order
+    static int quadratureOrder() { return N; };
 };
 
 template <Screening ScreeningType, int N>
-struct quad_integrator<ScreeningType, Quadrature::GaussChebyshev, N>
+struct theta_integrator<ScreeningType, Quadrature::GaussChebyshev, N>
 {
-    static double integrate(double e, double s, double x0)
+    static double theta(double e, double s, double x0)
     {
         H h(e, s, x0);
         gc_pos_quad<H, N> gc(h);
-        return gc() / x0;
+        return M_PI - 2.0 * s * gc() / x0;
     }
     static const char *quadratureName() { return "Gauss-Chebyshev"; }
     static Quadrature quadratureType() { return Quadrature::GaussChebyshev; }
+    static int quadratureOrder() { return N; };
 
 private:
     typedef xs_cms_base<ScreeningType> XS_;
@@ -437,14 +444,16 @@ private:
         double e, s, x0;
         void set(double ae, double as, double ax0) { e = ae, s = as, x0 = ax0; }
         H(double ae, double as, double ax0) : e(ae), s(as), x0(ax0) { }
-        double operator()(double u) { return std::sqrt((1 - u * u) / XS_::F(x0 / u, e, s)); }
+        double operator()(double u) { return std::sqrt(1.0 / XS_::F(x0 / u, e, s)); }
     };
 };
 
 template <Screening ScreeningType, int N>
-struct quad_integrator<ScreeningType, Quadrature::Lobatto4, N>
+struct theta_integrator<ScreeningType, Quadrature::Lobatto4, N>
 {
-    static double integrate(double e, double s, double x0)
+    static_assert(N == 4, "Quadrature::Lobatto4 requires N=4.");
+
+    static double theta(double e, double s, double x0)
     {
         // Lobatto quadrature coefficients
         constexpr static const double w[] = { 0.03472124, 0.1476903, 0.23485003, 0.1860249 };
@@ -457,10 +466,11 @@ struct quad_integrator<ScreeningType, Quadrature::Lobatto4, N>
         a += w[2] / std::sqrt(XS_::F(x0 / q[2], e, s));
         a += w[3] / std::sqrt(XS_::F(x0 / q[3], e, s));
 
-        return 0.5 * M_PI / x0 * a;
+        return M_PI - s * M_PI / x0 * a;
     }
-    static const char *quadratureName() { return "4-th order Lobatto"; }
+    static const char *quadratureName() { return "Lobatto"; }
     static Quadrature quadratureType() { return Quadrature::Lobatto4; }
+    static int quadratureOrder() { return 4; };
 
 private:
     typedef xs_cms_base<ScreeningType> XS_;
@@ -483,6 +493,53 @@ private:
     }
 };
 
+template <Screening ScreeningType, int N>
+struct theta_integrator<ScreeningType, Quadrature::Magic, N>
+{
+    static_assert(ScreeningType == Screening::ZBL,
+                  "Quadrature::Magic analytic formula can be used only for ZBL screening.");
+
+    static_assert(N == 0, "Quadrature::Magic requires N=0.");
+
+    static double theta(double e, double s, double x0) { return 2 * std::acos(cosThetaBy2(e, s)); }
+    static const char *quadratureName() { return "Magic"; }
+    static Quadrature quadratureType() { return Quadrature::Magic; }
+    static int quadratureOrder() { return 0; };
+
+private:
+    // Return \f$ \cos(\theta/2) \f$, where \f$ \theta \f$ is the center-of-mass scattering
+    // angle
+    static double cosThetaBy2(double e, double s);
+    // Return the ZBL potential and optionally its derivative
+    static double zbl_and_deriv(double R, double *Vprime);
+};
+
+template <Screening ScreeningType, int N>
+struct theta_integrator<ScreeningType, Quadrature::None, N>
+{
+    static_assert(ScreeningType == Screening::None,
+                  "Quadrature::None can be used only for un-screened potential.");
+
+    static_assert(N == 0, "Quadrature::None requires N=0.");
+
+    static double theta(double e, double s, double x0) { return 0; }
+    static const char *quadratureName() { return "None"; }
+    static Quadrature quadratureType() { return Quadrature::None; }
+    static int quadratureOrder() { return 0; };
+};
+
+/**
+ * \brief ZBL potential scattering angle by the MAGIC formula
+ *
+ * Calculate the scattering angle in the
+ * center-of-mass system for the
+ * Ziegler-Biersack-Littmark (ZBL) Universal screening function
+ * using the MAGIC interpolation formula of Biersack & Haggmark.
+ *
+ * Ref.: Biersack & Haggmark NIM1980
+ *
+ */
+
 /**
  * @brief Modified Bessel of the 2nd kind K1(x)
  *
@@ -497,26 +554,6 @@ static double bessel_k1(double x)
     constexpr static const double sqrtpihalf = 1.25331413731550012081;
     return (x > 200) ? sqrtpihalf * exp(-x) / std::sqrt(x) : std::cyl_bessel_k(1, x);
 }
-
-/**
- * \brief ZBL potential scattering angle by the MAGIC formula
- *
- * Calculate the scattering angle in the
- * center-of-mass system for the
- * Ziegler-Biersack-Littmark (ZBL) Universal screening function
- * using the MAGIC interpolation formula of Biersack & Haggmark.
- *
- * Ref.: Biersack & Haggmark NIM1980
- *
- */
-struct zbl_magic_interp
-{
-    /// @brief Return \f$ \cos(\theta/2) \f$, where \f$ \theta \f$ is the center-of-mass scattering
-    /// angle
-    static double cosThetaBy2(double e, double s);
-    /// @brief Return the ZBL potential and optionally its derivative
-    static double zbl_and_deriv(double R, double *Vprime);
-};
 
 } // namespace detail
 
@@ -548,17 +585,19 @@ struct zbl_magic_interp
  *
  * @sa \ref detail::quad_integrator
  */
-template <Screening ScreeningType, Quadrature QuadType = Quadrature::GaussChebyshev, int N = 10>
+template <Screening ScreeningType, Quadrature QuadType = Quadrature::GaussChebyshev,
+          int N = detail::preferredQuadOrder<QuadType>()>
 struct xs_cms : public xs_cms_base<ScreeningType>,
-                private detail::quad_integrator<ScreeningType, QuadType, N>
+                private detail::theta_integrator<ScreeningType, QuadType, N>
 {
 private:
     typedef xs_cms<ScreeningType, QuadType> My_t_;
     typedef xs_cms_base<ScreeningType> Base_t_;
-    typedef detail::quad_integrator<ScreeningType, QuadType, N> QuadInt_t_;
+    typedef detail::theta_integrator<ScreeningType, QuadType, N> QuadInt_t_;
 
 public:
     using QuadInt_t_::quadratureName;
+    using QuadInt_t_::quadratureOrder;
     using QuadInt_t_::quadratureType;
     using typename Base_t_::Phi;
 
@@ -587,7 +626,8 @@ public:
         if (e * s3 * s3 > 1.e12)
             return Base_t_::theta_impulse_approx(e, s);
 
-        return M_PI - pi_minus_theta(e, s);
+        double x0 = Base_t_::apsis(e, s);
+        return QuadInt_t_::theta(e, s, x0);
     }
 
     /**
@@ -687,7 +727,7 @@ private:
         {
             double mu = mumax_ * u;
             double thetaCM = 2. * std::asin(std::sqrt(mu));
-            return crossSection(e_, thetaCM, 1e-10) * u * std::sqrt(1 - u * u);
+            return crossSection(e_, thetaCM, 1e-10) * u;
         }
     };
 
@@ -695,7 +735,7 @@ private:
     static double pi_minus_theta(double e, double s)
     {
         double x0 = Base_t_::apsis(e, s);
-        return 2.0 * s * QuadInt_t_::integrate(e, s, x0);
+        return M_PI - QuadInt_t_::theta(e, s, x0);
     }
 };
 
@@ -1009,24 +1049,25 @@ double xs_cms<ScreeningType, QuadType, N>::crossSection(double e, double thetaCM
 
 // xs_cms template specializations for Unscreened Coulomb (analytic results)
 template <>
-inline double xs_cms<Screening::None>::sin2Thetaby2(double e, double s)
+inline double xs_cms<Screening::None, Quadrature::None, 0>::sin2Thetaby2(double e, double s)
 {
     double x = 2 * e * s;
     return 1. / (1. + x * x);
 }
 template <>
-inline double xs_cms<Screening::None>::theta(double e, double s)
+inline double xs_cms<Screening::None, Quadrature::None, 0>::theta(double e, double s)
 {
     return 2 * std::asin(std::sqrt(sin2Thetaby2(e, s)));
 }
 template <>
-inline double xs_cms<Screening::None>::find_s(double e, double thetaCM, double)
+inline double xs_cms<Screening::None, Quadrature::None, 0>::find_s(double e, double thetaCM, double)
 {
     double x = std::sin(thetaCM / 2);
     return 0.5 / e * std::sqrt(1. / (x * x) - 1.);
 }
 template <>
-inline double xs_cms<Screening::None>::crossSection(double e, double thetaCM, double)
+inline double xs_cms<Screening::None, Quadrature::None, 0>::crossSection(double e, double thetaCM,
+                                                                         double)
 {
     double x = std::sin(thetaCM / 2);
     x *= x;
@@ -1035,34 +1076,21 @@ inline double xs_cms<Screening::None>::crossSection(double e, double thetaCM, do
     return 1. / x;
 }
 template <>
-inline double xs_cms<Screening::None>::sn(double, double)
+inline double xs_cms<Screening::None, Quadrature::None, 0>::sn(double, double)
 {
     return std::numeric_limits<double>::infinity();
 }
 
-// xs_cms template specializations for ZBL_MAGIC
+// xs_cms template specializations for ZBL + MAGIC
 
 template <>
-inline double xs_cms<Screening::ZBL_MAGIC>::theta(double e, double s)
-{
-    return 2 * std::acos(detail::zbl_magic_interp::cosThetaBy2(e, s));
-}
-
-template <>
-inline double xs_cms<Screening::ZBL_MAGIC>::sin2Thetaby2(double e, double s)
-{
-    double m = detail::zbl_magic_interp::cosThetaBy2(e, s);
-    return 1. - m * m;
-}
-
-template <>
-inline double xs_cms<Screening::ZBL_MAGIC>::sn(double e, double theta_max)
+inline double xs_cms<Screening::ZBL, Quadrature::Magic, 0>::sn(double e, double theta_max)
 {
     return 0.5 * std::log(1 + 1.1383 * e)
             / (e + 0.01321 * std::pow(e, 0.21226) + 0.19593 * std::sqrt(e));
 }
 
-// detail::zbl_magic_interp implementation
+// detail::theta_integrator implementation for MAGIC
 
 /*
  * Implementation of MAGIC formula
@@ -1074,7 +1102,9 @@ inline double xs_cms<Screening::ZBL_MAGIC>::sn(double e, double theta_max)
  * @param s is the reduced impact parameter
  * @return \f$ \cos(\theta/2) \f$
  */
-double detail::zbl_magic_interp::cosThetaBy2(double e, double s)
+template <Screening ScreeningType, int N>
+inline double detail::theta_integrator<ScreeningType, Quadrature::Magic, N>::cosThetaBy2(double e,
+                                                                                         double s)
 {
     double cost2; /* cos(theta/2)*/
     double RoC, Delta, R, RR, A, G, alpha, beta, gamma, V, V1, FR, FR1, Q;
@@ -1131,10 +1161,13 @@ double detail::zbl_magic_interp::cosThetaBy2(double e, double s)
  * @param Vprime if a non-NULL pointer is passed, it receives the value of dV/dR
  * @return the value of the potential
  */
-double detail::zbl_magic_interp::zbl_and_deriv(double R, double *Vprime)
+template <Screening ScreeningType, int N>
+inline double
+detail::theta_integrator<ScreeningType, Quadrature::Magic, N>::zbl_and_deriv(double R,
+                                                                             double *Vprime)
 {
-    auto &C = screening_function<Screening::ZBL>::C;
-    auto &A = screening_function<Screening::ZBL>::A;
+    const auto &C = screening_function<Screening::ZBL>::C;
+    const auto &A = screening_function<Screening::ZBL>::A;
 
     double EX1 = C[0] * exp(-A[0] * R);
     double EX2 = C[1] * exp(-A[1] * R);
