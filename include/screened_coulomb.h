@@ -199,17 +199,16 @@ public:
     /**
      * @brief Finds the apsis of the scattered projectile trajectory
      *
-     * The apsis is the point of closest approach.
+     * The apsis is the distance from the scattering center at the point of closest approach.
      *
      * It is the root of
      * \f$ F(x_0)=0 \f$. In the general case the equation is solved numerically
      * using bisection.
      *
-     * For the unscreened Coulomb potential the equation has the analytical solution
+     * For the unscreened Coulomb potential, \f$ x_0 \f$ is given by
      * \f[
      * x_0 = \frac{1}{2\epsilon} \left[ 1 + \sqrt{1 + (2\,\epsilon\,s)^2} \right]
      * \f]
-     *
      *
      * @param e reduced energy of the scattered particle
      * @param s reduced impact parameter
@@ -268,23 +267,30 @@ enum class Quadrature {
 namespace detail {
 
 /**
- * @brief Gauss-Chebyshev integration of \f$ f(x) \f$ for \f$ 0<x<1 \f$
+ * @brief Gauss-Chebyshev quadrature in  \f$ [0, 1] \f$
  *
- * Approximates the integral
+ * A modified Gauss-Chebyshev quadrature scheme to approximate the integral
  * \f[
- * I = \int_0^1 {f(x)\, dx} = \int_0^1 {[f(x)/w(x)]\, w(x)\, dx}
+ * I = \int_0^1 {f(x)\, dx} = \int_0^1 {[f(x)\,w(x)]\, [w(x)]^{-1}\, dx},
  * \f]
- * where \f$ w(x)=(1-x^2)^{-1/2} \f$ with the following expression
+ * where \f$ w(x)=\sqrt{1-x^2} \f$.
+ *
+ * The approximation is given by
  * \f[
- * I \approx w_N \sum_{i=0}^{N-1}{f(x_i)/w(x_i)}
+ * I \approx \sum_{i=0}^{N-1}{w_i f(x_i)},
  * \f]
- * where \f$ w_N = \frac{\pi}{2N} \f$ and
+ * where
  * \f[
- * x_i = \cos\left[ w_N\,(i + 1/2) \right]
+ * x_i = \cos\left[ \frac{\pi}{2N}\,\left( i + \frac{1}{2} \right) \right]
+ * \f]
+ * \f[
+ * w_i = \frac{\pi}{2N} \cdot w(x_i)
  * \f]
  *
  * @tparam Functor the function \f$ f(x) \f$
  * @tparam N the number of terms in the sum
+ *
+ * \sa https://dlmf.nist.gov/3.5.v
  */
 template <class Functor, int N>
 class gc_pos_quad
@@ -324,9 +330,9 @@ private:
     }() };
 };
 
-/// The preferred quadrature order
+// The preferred quadrature order
 template <Quadrature QuadType>
-constexpr int preferredQuadOrder()
+constexpr int __preferredQuadOrder__()
 {
     switch (QuadType) {
     case Quadrature::GaussChebyshev:
@@ -341,40 +347,31 @@ constexpr int preferredQuadOrder()
 };
 
 /**
- * @brief Implementation of quadrature for the scattering integral
+ * @brief Numerical evaluation of the scattering angle
  *
- * The integral
- *
+ * The center-of-mass scattering angle is \f$ \theta = \pi - 2 s I\f$,
+ * where
  * \f[
  * I = \int_{x_0}^{\infty}{x^{-2} \left[ F(x) \right]^{-1/2} dx}
  * \f]
  *
- * is evaluated by different quadrature methods depending on the template argument.
- *
- * - Gauss–Chebyshev quadrature (https://dlmf.nist.gov/3.5#v)
- *
+ * Setting \f$ x = x_0/u \f$ the integral becomes
  * \f[
- *   I = \frac{\pi}{N\, x_0}
- *   \sum_{j=0}^{N/2-1}{H\left[ \cos\left( \frac{\pi}{N}\,j + \frac{\pi}{2N} \right) \right]}
+ * I = x_0^{-1} \int_{0}^{1}{\left[ F(x_0/u) \right]^{-1/2} du}
  * \f]
+ * which can be evaluated by quadrature. Different schemes are employed depending on the template
+ * argument.
  *
- * where
+ * - Gauss–Chebyshev quadrature using \ref gc_pos_quad . The order is set by the template parameter
+ * \a N.
  *
- * \f[
- * H(u) = \sqrt{\frac{1-u^2}{F(x_0/u)}}
- * \f]
- *
- * and the typical value of \f$N\f$ is 100.
- *
- * This method is most accurate.
- *
- * - 4th-order Lobatto quadrature given by
+ * - 4th-order Lobatto quadrature from
  * Mendenhall & Weller 2005 (https://dx.doi.org/10.1016/j.nimb.2004.08.014)
  *
  * \f[
  *   I = \frac{\pi}{2\, x_0} \left[
  *   \frac{1 + \lambda_0}{30} +
- *   \sum_{j=1}^{4}{w_j\, \left[ F(x_0/q_j) \right]^{-1/2} }
+ *   \sum_{j=1}^{4}{w_j\, \left[ F(x_0/u_j) \right]^{-1/2} }
  *   \right]
  * \f]
  *
@@ -392,14 +389,16 @@ constexpr int preferredQuadOrder()
  * w = [0.03472124, 0.1476903, 0.23485003, 0.1860249],
  * \f]
  * \f[
- * q = [0.9830235, 0.8465224, 0.5323531, 0.18347974].
+ * u = [0.9830235, 0.8465224, 0.5323531, 0.18347974].
  * \f]
  *
- * This method is slightly less accurate but more efficient.
+ * This method is slightly less accurate but more efficient. N=4.
  *
- * @tparam
- *   ScreeningType The type of screening
- *   QuadType The type of quadrature to use
+ * - the MAGIC analytic formula of Biersack & Haggmark (NIM1980). N=0.
+ *
+ * @tparam ScreeningType The type of screening
+ * @tparam QuadType The type of quadrature to use
+ * @tparam N the quadrature order
  */
 template <Screening ScreeningType, Quadrature QuadType, int N>
 struct theta_integrator
@@ -408,20 +407,22 @@ struct theta_integrator
      * @brief Returns the value of \fS \theta \fS
      * @param e reduced energy
      * @param s reduced impact parameter
-     * @param x0 apsis
+     * @param x0 apsis of the trajectory
      * @return
      */
     static double theta(double e, double s, double x0);
 
-    /// The name of the quadrature scheme
+    /// @brief The name of the quadrature scheme
     static const char *quadratureName();
 
-    /// The type of quadrature as a \ref Quadrature enum type
+    /// @brief The type of quadrature as a \ref Quadrature enum type
     static Quadrature quadratureType() { return QuadType; }
 
-    /// The quadrature order
+    /// @brief The quadrature order
     static int quadratureOrder() { return N; };
 };
+
+// partial specializations of theta_integrator
 
 template <Screening ScreeningType, int N>
 struct theta_integrator<ScreeningType, Quadrature::GaussChebyshev, N>
@@ -529,18 +530,6 @@ struct theta_integrator<ScreeningType, Quadrature::None, N>
 };
 
 /**
- * \brief ZBL potential scattering angle by the MAGIC formula
- *
- * Calculate the scattering angle in the
- * center-of-mass system for the
- * Ziegler-Biersack-Littmark (ZBL) Universal screening function
- * using the MAGIC interpolation formula of Biersack & Haggmark.
- *
- * Ref.: Biersack & Haggmark NIM1980
- *
- */
-
-/**
  * @brief Modified Bessel of the 2nd kind K1(x)
  *
  * For \f$ x>200 \f$ an approximation is used (error below 1%)
@@ -582,11 +571,13 @@ static double bessel_k1(double x)
  *   ScreeningType specifies the type of screening function
  * @tparam
  *   QuadType specifies the quadrature method
+ * @tparam
+ *   N specifies the quadrature order
  *
  * @sa \ref detail::quad_integrator
  */
 template <Screening ScreeningType, Quadrature QuadType = Quadrature::GaussChebyshev,
-          int N = detail::preferredQuadOrder<QuadType>()>
+          int N = detail::__preferredQuadOrder__<QuadType>()>
 struct xs_cms : public xs_cms_base<ScreeningType>,
                 private detail::theta_integrator<ScreeningType, QuadType, N>
 {
@@ -615,7 +606,6 @@ public:
      *
      * @param e reduced energy of the scattered particle in CM system
      * @param s reduced impact parameter
-     * @param nsum number of terms in the Gauss-Chebyshev quadrature - otherwise unused
      * @return
      */
     static double theta(double e, double s)
