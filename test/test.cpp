@@ -8,7 +8,7 @@
 using namespace std::chrono;
 using namespace std;
 
-#define NGS 32
+#define NGS 4
 #define NITER 3000000
 
 template <Quadrature Q_>
@@ -108,7 +108,7 @@ const double xs_ref[] = { 56.369466, 57.394136, 60.549823, 66.086753, 74.44714, 
 template <Quadrature Q_>
 void test1()
 {
-    typedef xs_cms<Screening::Moliere, Q_> XS;
+    typedef xs_cms<Screening::Moliere, Q_, NGS> XS;
 
     cout << "TEST-1" << endl;
     cout << "Compare screened_coulomb to refence data from Robinson1970" << endl;
@@ -138,7 +138,7 @@ void test1()
     for (int i = 0; i <= 40; ++i) {
         double s = 0.5 * i;
         double a = XS::apsis(e, s);
-        double th = XS::theta(e, s, NGS);
+        double th = XS::theta(e, s);
         double xs = XS::crossSection(e, th) * 4 * M_PI;
         th *= (180.0 / M_PI);
         cout << setprecision(3) << setw(6) << s << ' ';
@@ -161,7 +161,7 @@ void test2()
     double e[] = { 1e-3, 1e-3, 0.1, 0.1, 10., 10. };
     double s[] = { 0.5, 20, 0.2, 8.0, 0.025, 1.0 };
 
-    typedef xs_cms<Screening::ZBL, Q_> zbl;
+    typedef xs_cms<Screening::ZBL, Q_, NGS> zbl;
     typedef xs_cms<Screening::ZBL_MAGIC> zblm;
 
     cout << "TEST-2" << endl;
@@ -186,9 +186,9 @@ void test2()
     cout << setw(w1) << "Rel. Diff" << endl;
 
     for (int i = 0; i < 6; ++i) {
-        double th = zbl::theta(e[i], s[i], NGS);
+        double th = zbl::theta(e[i], s[i]);
         double xs = zbl::crossSection(e[i], th);
-        double thm = zblm::theta(e[i], s[i], NGS);
+        double thm = zblm::theta(e[i], s[i]);
         double xsm = zblm::crossSection(e[i], thm);
         th *= 180 / M_PI;
         thm *= 180 / M_PI;
@@ -210,7 +210,7 @@ void test3()
     double e[] = { 1e-3, 1e-3, 0.1, 0.1, 10., 10. };
     double s[] = { 0.5, 20, 0.2, 8.0, 0.025, 1.0 };
 
-    typedef xs_cms<S_, Quadrature::GaussChebyshev> zbl1;
+    typedef xs_cms<S_, Quadrature::GaussChebyshev, NGS> zbl1;
     typedef xs_cms<S_, Quadrature::Lobatto4> zbl2;
 
     cout << "TEST-3" << endl;
@@ -234,10 +234,10 @@ void test3()
     cout << setw(w1) << "Rel. Diff" << endl;
 
     for (int i = 0; i < 6; ++i) {
-        double th1 = zbl1::theta(e[i], s[i], NGS);
+        double th1 = zbl1::theta(e[i], s[i]);
         double xs1 = zbl1::crossSection(e[i], th1);
         th1 *= 180.0 / M_PI;
-        double th2 = zbl2::theta(e[i], s[i], NGS);
+        double th2 = zbl2::theta(e[i], s[i]);
         double xs2 = zbl2::crossSection(e[i], th2);
         th2 *= 180.0 / M_PI;
         cout << setprecision(2);
@@ -260,7 +260,7 @@ void test4(size_t N)
     double e[] = { 1e-3, 1e-3, 0.1, 0.1, 10., 10. };
     double s[] = { 0.5, 20, 0.2, 8.0, 0.025, 1.0 };
 
-    typedef xs_cms<S_, Q_> XS;
+    typedef xs_cms<S_, Q_, NGS> XS;
 
     cout << "TEST-4" << endl;
     cout << "Timing benchmark" << endl;
@@ -289,7 +289,7 @@ void test4(size_t N)
         double s = us(gen);
         se += e;
         ss += s;
-        th += XS::theta(e, s, NGS);
+        th += XS::theta(e, s);
     }
 
     t2 = high_resolution_clock::now();

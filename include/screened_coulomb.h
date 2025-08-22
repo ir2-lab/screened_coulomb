@@ -4,6 +4,7 @@
 #include <cmath>
 #include <limits>
 #include <cassert>
+#include <array>
 
 /// Bohr radius [nm]
 #define BOHR_RADIUS 0.05291772108
@@ -13,41 +14,6 @@
 
 /// \f$ e^2 / 4 \pi \epsilon_0 = e^2 c^2 \f$ in [eV-nm] */
 #define E2C2 1.43996445
-
-/**
- * \mainpage
- *
- * A C++ header-only library for classical scattering calculations with the screened
- * Coulomb potential
- * \f[
- * V(r) = \frac{Z_1 Z_2 e^2}{r} \Phi(r/a),
- * \f]
- * where \f$ \Phi \f$ is the screening function and \f$ a \f$ the screening length.
- *
- * Different types of screening functions are defined
- * by the \ref screening_function templated structure with the enum class \ref Screening
- * as template parameter:
- * - Ziegler-Biersack-Littmark (ZBL) Universal potential, \ref Screening::ZBL
- * - Bohr, \ref Screening::Bohr
- * - Kr-C, \ref Screening::KrC
- * - Moliere, \ref Screening::Moliere
- *
- * For a short overview of the definitions and the underlying physics see \ref screened-coulomb.
- *
- * The center-of-mass scattering angle is evaluated by quadrature in the
- * \ref xs_cms template class, where the
- * \ref Screening enum is again the template parameter.
- *
- * In the case of ZBL, the so-called MAGIC approximation of Biersack-Haggmark
- * for the scattering integral is also implemented (with \ref Screening::ZBL_MAGIC template
- * parameter).
- *
- * For the unscreened Coulomb potential (\ref Screening::None)
- * analytical formulae are used.
- *
- * The \ref xs_lab class performs scattering calculations in the lab system.
- *
- */
 
 /** \file */
 
@@ -216,6 +182,14 @@ struct screening_function<Screening::ZBL_MAGIC>
  * @brief The xs_cms_base class implements basic components for screened Coulomb scattering
  * calculations
  *
+ * The calculations refer to the center-of-mass system.
+ *
+ * The quantities obtained by this class are:
+ * - the function F() in the integrant of the scattering integral
+ * - the apsis of the trajectory, i.e., the distance of closest approach, apsis()
+ * - the scattering angle in the impulse approximation (high enegry and large impact parameter),
+ * theta_impulse_approx()
+ *
  * @tparam
  *   ScreeningType specifies the type of screening function
  */
@@ -315,29 +289,51 @@ enum class Quadrature {
 namespace detail {
 
 /**
- * @brief DE numerical integrator
+ * @brief Gauss-Chebyshev integration of \f$ f(x) \f$ for \f$ 0<x<1 \f$
  *
- * Algorithm from Press et al. Numerical Recipes 3rd ed.
- *
- * It is employed in the calculation of the stopping cross-section integral
+ * Approximates the integral
  * \f[
- *   \langle T\cdot \sigma \rangle  = \int_0^{T_m} {T \, dσ(E,T)}
+ * I = \int_0^1 {f(x)\, w(x)\, dx}
+ * \f]
+ * where \f$ w(x)=(1-x^2)^{-1/2} \f$ with the following expression
+ * \f[
+ * I \approx w_N \sum_{i=0}^{N-1}{f(x_i)}
+ * \f]
+ * where \f$ w_N = \frac{\pi}{2N} \f$ and
+ * \f[
+ * x_i = \cos\left[ w_N\,(i + 1/2) \right]
  * \f]
  *
- * @tparam Functor The function to integrate - Functor::operator() must be implemented
+ * @tparam Functor the function \f$ f(x) \f$
+ * @tparam N the number of terms in the sum
  */
-template <class Functor>
-class de_integrator
+template <class Functor, int N>
+class gc_pos_quad
 {
 public:
-    de_integrator(Functor &funcc, const double hmaxx = 3.7) : func(funcc), hmax(hmaxx) { }
-    double integrate(double aa, double bb, double eps = 1.e-10);
+    /// @brief Construct a new gc_pos_quad object
+    /// @param func A function object
+    gc_pos_quad(Functor &func) : func_(func) { }
+
+    /// @brief Return the value of the integral
+    double operator()() const
+    {
+        double s{ 0.0 };
+        for (int i = 0; i < N; ++i)
+            s += func_(u_[i]);
+        return w_ * s;
+    }
 
 private:
-    double a, b, hmax, s;
-    Functor &func;
-    int n;
-    double next();
+    Functor &func_;
+    constexpr static double w_ = 0.5 * M_PI / N;
+    constexpr static auto u_{ []() constexpr {
+        std::array<double, N> u{};
+        for (int i = 0; i < N; ++i) {
+            u[i] = std::cos(w_ * (i + 0.5));
+        }
+        return u;
+    }() };
 };
 
 /**
@@ -401,7 +397,7 @@ private:
  *   ScreeningType The type of screening
  *   QuadType The type of quadrature to use
  */
-template <Screening ScreeningType, Quadrature QuadType>
+template <Screening ScreeningType, Quadrature QuadType, int N>
 struct quad_integrator
 {
     /**
@@ -412,7 +408,7 @@ struct quad_integrator
      * @param nsum number of quadrature terms (only for the Gauss-Chebyshev method)
      * @return
      */
-    static double integrate(double e, double s, double x0, int nsum);
+    static double integrate(double e, double s, double x0);
 
     /// The name of the quadrature scheme
     static const char *quadratureName();
@@ -421,20 +417,14 @@ struct quad_integrator
     static Quadrature quadratureType() { return QuadType; }
 };
 
-template <Screening ScreeningType>
-struct quad_integrator<ScreeningType, Quadrature::GaussChebyshev>
+template <Screening ScreeningType, int N>
+struct quad_integrator<ScreeningType, Quadrature::GaussChebyshev, N>
 {
-    static double integrate(double e, double s, double x0, int nsum)
+    static double integrate(double e, double s, double x0)
     {
-        double sum(0.);
-        int m = nsum >> 1;
-        double a = M_PI / 2 / m;
-        double b = a / 2;
-        for (unsigned int j = 0; j < m; j++) {
-            double uj = std::cos(a * j + b);
-            sum += H(uj, x0, e, s);
-        }
-        return a * sum / x0;
+        H h(e, s, x0);
+        gc_pos_quad<H, N> gc(h);
+        return gc() / x0;
     }
     static const char *quadratureName() { return "Gauss-Chebyshev"; }
     static Quadrature quadratureType() { return Quadrature::GaussChebyshev; }
@@ -442,16 +432,19 @@ struct quad_integrator<ScreeningType, Quadrature::GaussChebyshev>
 private:
     typedef xs_cms_base<ScreeningType> XS_;
 
-    static double H(double u, double x0, double e, double s)
+    struct H
     {
-        return std::sqrt((1 - u * u) / XS_::F(x0 / u, e, s));
-    }
+        double e, s, x0;
+        void set(double ae, double as, double ax0) { e = ae, s = as, x0 = ax0; }
+        H(double ae, double as, double ax0) : e(ae), s(as), x0(ax0) { }
+        double operator()(double u) { return std::sqrt((1 - u * u) / XS_::F(x0 / u, e, s)); }
+    };
 };
 
-template <Screening ScreeningType>
-struct quad_integrator<ScreeningType, Quadrature::Lobatto4>
+template <Screening ScreeningType, int N>
+struct quad_integrator<ScreeningType, Quadrature::Lobatto4, N>
 {
-    static double integrate(double e, double s, double x0, int nsum)
+    static double integrate(double e, double s, double x0)
     {
         // Lobatto quadrature coefficients
         constexpr static const double w[] = { 0.03472124, 0.1476903, 0.23485003, 0.1860249 };
@@ -555,14 +548,14 @@ struct zbl_magic_interp
  *
  * @sa \ref detail::quad_integrator
  */
-template <Screening ScreeningType, Quadrature QuadType = Quadrature::GaussChebyshev>
+template <Screening ScreeningType, Quadrature QuadType = Quadrature::GaussChebyshev, int N = 10>
 struct xs_cms : public xs_cms_base<ScreeningType>,
-                private detail::quad_integrator<ScreeningType, QuadType>
+                private detail::quad_integrator<ScreeningType, QuadType, N>
 {
 private:
     typedef xs_cms<ScreeningType, QuadType> My_t_;
     typedef xs_cms_base<ScreeningType> Base_t_;
-    typedef detail::quad_integrator<ScreeningType, QuadType> QuadInt_t_;
+    typedef detail::quad_integrator<ScreeningType, QuadType, N> QuadInt_t_;
 
 public:
     using QuadInt_t_::quadratureName;
@@ -586,7 +579,7 @@ public:
      * @param nsum number of terms in the Gauss-Chebyshev quadrature - otherwise unused
      * @return
      */
-    static double theta(double e, double s, int nsum = 100)
+    static double theta(double e, double s)
     {
         // if s > 100/e^(1/6) use impulse approx
         // The limit was found empirically for theta < 1e-9
@@ -594,7 +587,7 @@ public:
         if (e * s3 * s3 > 1.e12)
             return Base_t_::theta_impulse_approx(e, s);
 
-        return M_PI - pi_minus_theta(e, s, nsum);
+        return M_PI - pi_minus_theta(e, s);
     }
 
     /**
@@ -645,51 +638,64 @@ public:
      * Calculate the reduced stopping cross-section
      *
      * \f[
-     * s_n(\epsilon) = \frac{\epsilon}{\pi\, a^2 T_m} S_n(E) =
-     * \frac{\epsilon}{\pi a^2} \int_0^{\pi}
-     * {\sin^2(\theta/2)\frac{d\sigma}{d\Omega} d\Omega(\theta)}
+     * s_n(\epsilon) = \frac{\epsilon}{\pi\, a^2 \gamma E} S_n(E) =
+     * \frac{\epsilon}{\pi a^2} \, \frac{1}{4\pi} \cdot
+     * \int_0^{4\pi}
+     * {\Omega\,\frac{d\sigma}{d\Omega} d\Omega}
      * \f]
-     *
-     * The integral is evaluated by numerical quadrature.
      *
      * Optionally, the function calculates the stopping power
      * for scattering angles up to a maximum value.
      * In this case the
      * upper limit in the integral is replaced by \f$\theta_{max}\f$.
      *
+     * The integral is evaluated by Gauss-Chebyshev quadrature. The order is specified by the
+     * template parameter N.
+     *
+     * If \f$ x = \Omega / \Omega_{max}\f$ and
+     * \f[
+     * f(x) = x\,\sqrt{1-x^2}\, \frac{d\sigma}{d\Omega}
+     * \f]
+     * then
+     * \f[
+     * s_n(\epsilon) = 4 \epsilon \left( \frac{\Omega_{max}}{4\pi} \right)^2 \int_0^1 {\frac{f(x)
+     * dx}{\sqrt{1-x^2}}}
+     * \approx 4 \epsilon \left( \frac{\Omega_{max}}{4\pi} \right)^2 w_N \sum_{i=0}^{N-1}{f(x_i)}
+     * \f]
+     *
+     *
      * @param e the reduced energy
      * @param theta_max optional maximum scattering angle, defaults to \f$ \pi \f$
-     * @param tol optional rel. tolerance of the integration, default is 1e-6
      * @return the energy loss cross-section
      */
-    static double sn(double e, double theta_max = M_PI, double tol = 1.e-6)
+    static double sn(double e, double theta_max = M_PI)
     {
-        eloss_functor_ F;
-        detail::de_integrator<eloss_functor_> I(F);
-        F.e_ = e;
         double mu_max = sin(theta_max / 2);
         mu_max = mu_max * mu_max;
-        return 4 * e * I.integrate(0., mu_max, tol);
+        eloss_functor_ F(e, mu_max);
+        detail::gc_pos_quad<eloss_functor_, N> gc(F);
+        return 4 * e * mu_max * mu_max * gc();
     }
 
 private:
     // integrant for numerical integration to obtain stopping cross-section
     struct eloss_functor_
     {
-        double e_;
-        static double ergxs(double e, double mu)
+        double e_, mumax_;
+        eloss_functor_(double e, double mumax) : e_(e), mumax_(mumax) { }
+        double operator()(double u)
         {
+            double mu = mumax_ * u;
             double thetaCM = 2. * std::asin(std::sqrt(mu));
-            return crossSection(e, thetaCM, 1e-10) * mu;
+            return crossSection(e_, thetaCM, 1e-10) * u * std::sqrt(1 - u * u);
         }
-        double operator()(double x, double d) { return ergxs(e_, x); }
     };
 
     // This function returns π-θ
-    static double pi_minus_theta(double e, double s, int nsum = 100)
+    static double pi_minus_theta(double e, double s)
     {
         double x0 = Base_t_::apsis(e, s);
-        return 2.0 * s * QuadInt_t_::integrate(e, s, x0, nsum);
+        return 2.0 * s * QuadInt_t_::integrate(e, s, x0);
     }
 };
 
@@ -913,8 +919,8 @@ inline double xs_cms_base<Screening::None>::theta_impulse_approx(double e, doubl
 
 // xs_cms
 
-template <Screening ScreeningType, Quadrature QuadType>
-double xs_cms<ScreeningType, QuadType>::find_s(double e, double thetaCM, double tol)
+template <Screening ScreeningType, Quadrature QuadType, int N>
+double xs_cms<ScreeningType, QuadType, N>::find_s(double e, double thetaCM, double tol)
 {
 
     if (thetaCM == 0.)
@@ -972,8 +978,8 @@ double xs_cms<ScreeningType, QuadType>::find_s(double e, double thetaCM, double 
     return xm;
 }
 
-template <Screening ScreeningType, Quadrature QuadType>
-double xs_cms<ScreeningType, QuadType>::crossSection(double e, double thetaCM, double tol)
+template <Screening ScreeningType, Quadrature QuadType, int N>
+double xs_cms<ScreeningType, QuadType, N>::crossSection(double e, double thetaCM, double tol)
 {
     // find corresponfding reduced impact parameter
     double s = find_s(e, thetaCM, tol);
@@ -1009,7 +1015,7 @@ inline double xs_cms<Screening::None>::sin2Thetaby2(double e, double s)
     return 1. / (1. + x * x);
 }
 template <>
-inline double xs_cms<Screening::None>::theta(double e, double s, int)
+inline double xs_cms<Screening::None>::theta(double e, double s)
 {
     return 2 * std::asin(std::sqrt(sin2Thetaby2(e, s)));
 }
@@ -1029,7 +1035,7 @@ inline double xs_cms<Screening::None>::crossSection(double e, double thetaCM, do
     return 1. / x;
 }
 template <>
-inline double xs_cms<Screening::None>::sn(double, double, double)
+inline double xs_cms<Screening::None>::sn(double, double)
 {
     return std::numeric_limits<double>::infinity();
 }
@@ -1037,7 +1043,7 @@ inline double xs_cms<Screening::None>::sn(double, double, double)
 // xs_cms template specializations for ZBL_MAGIC
 
 template <>
-inline double xs_cms<Screening::ZBL_MAGIC>::theta(double e, double s, int nsum)
+inline double xs_cms<Screening::ZBL_MAGIC>::theta(double e, double s)
 {
     return 2 * std::acos(detail::zbl_magic_interp::cosThetaBy2(e, s));
 }
@@ -1050,65 +1056,13 @@ inline double xs_cms<Screening::ZBL_MAGIC>::sin2Thetaby2(double e, double s)
 }
 
 template <>
-inline double xs_cms<Screening::ZBL_MAGIC>::sn(double e, double theta_max, double tol)
+inline double xs_cms<Screening::ZBL_MAGIC>::sn(double e, double theta_max)
 {
     return 0.5 * std::log(1 + 1.1383 * e)
             / (e + 0.01321 * std::pow(e, 0.21226) + 0.19593 * std::sqrt(e));
 }
 
-// detail::de_integrator implementation
-
-/*
- * On the ﬁrst call to the function next (n=1), the routine returns
- * the crudest estimate for the integral.
- * Subsequent calls to next (n=2,3,...) will improve the accuracy by adding
- * 2^(n-1) additional interior points.
- */
-template <class Functor>
-double detail::de_integrator<Functor>::next()
-{
-    double del, fact, q, qp1, sum, t, twoh;
-    int it, j;
-    n++;
-    if (n == 1) {
-        fact = 0.25;
-        return s = hmax * 2.0 * (b - a) * fact * func(0.5 * (b + a), 0.5 * (b - a));
-    } else {
-        for (it = 1, j = 1; j < n - 1; j++)
-            it <<= 1;
-        twoh = hmax / it;
-        // Twice the spacing of the points to be added.
-        t = 0.5 * twoh;
-        for (sum = 0.0, j = 0; j < it; j++) {
-            q = exp(-2.0 * sinh(t));
-            qp1 = 1.0 + q;
-            del = (b - a) * q / qp1;
-            fact = q / qp1 / qp1 * cosh(t);
-            sum += fact * (func(a + del, del) + func(b - del, del));
-            t += twoh;
-        }
-        return s = 0.5 * s + (b - a) * twoh * sum; // Replace s by its reﬁned value and return.
-    }
-}
-
-template <class Functor>
-double detail::de_integrator<Functor>::integrate(double aa, double bb, double eps)
-{
-    const int JMAX = 20;
-    double os = 0.0;
-    a = aa;
-    b = bb;
-    n = 0;
-    for (int j = 0; j < JMAX; j++) {
-        next();
-        if (j > 5) // Avoid spurious early convergence.
-            if (std::abs(s - os) < eps * std::abs(os) || (s == 0.0 && os == 0.0))
-                return s;
-        os = s;
-    }
-    // too many iterations
-    return std::numeric_limits<double>::quiet_NaN();
-}
+// detail::zbl_magic_interp implementation
 
 /*
  * Implementation of MAGIC formula

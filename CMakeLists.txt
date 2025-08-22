@@ -26,7 +26,7 @@ target_include_directories(
 )
 
 if(MAIN_PROJECT)
-  add_executable(test tests/test.cpp)
+  add_executable(test test/test.cpp)
   target_link_libraries(test screened_coulomb)
 endif()
 

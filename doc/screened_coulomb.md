@@ -1,8 +1,9 @@
-# Screened Coulomb scattering {#screened-coulomb}
+# Short physics intro {#screened-coulomb}
+    
 
-## Screened Coulomb potential definition
+### Screened Coulomb potential definition
 
-The interaction of projectile ions (atomic number \f$Z_1\f$, mass \f$m_1\f$) with target atoms \f$(Z_2,m_2)\f$ is described by the screened Coulomb potential 
+The interaction between a projectile (atomic number \f$Z_1\f$, mass \f$m_1\f$) and a target atom \f$(Z_2,m_2)\f$ can be described by the screened Coulomb potential 
 $$
 V(r) = \frac{Z_1 Z_2 e^2}{r} \Phi(r/a)
 $$
@@ -17,15 +18,15 @@ $$
 \Phi(0) = 1, \quad \Phi(\infty)\to 0
 $$
 
-Different forms of the screening function have been proposed. The most widely used one is a sum of exponentials
+Different forms of the screening function have been proposed. The most widely used is a sum of exponentials
 $$
 \Phi(x) = \sum_i {A_i \, e^{-b_ix}}, \quad \sum_i{A_i}=1
 $$
-Several definitions for screening functions of this type are provided, which can be selected by the \ref Screening enum.
+\ref screened_coulomb provides several different screening functions of this type, which can be selected by the \ref Screening enumerator.
 
-## Scattering angle
+### Scattering angle
 
-The scattering of the incoming projectile ions of energy \f$E\f$ is elastic, and can be adequately described by classical kinematics.
+The scattering of the incoming projectile of energy \f$E\f$ is elastic, and can be adequately described by classical kinematics.
 
 The scattering angle in the center-of-mass system is given by
 $$
@@ -42,24 +43,11 @@ and
 - \f$ x_0 \f$ is the distance of closest approach, or apsis, which satisfies
 \f$ F(x_0)=0 \f$.
 
-The integral can be evaluated numerically by quadrature.
-Employing the Gauss–Chebyshev scheme (https://dlmf.nist.gov/3.5#v) it is obtained that
- 
- \f[
-   \theta = \pi - \frac{2\,s}{x_0} \frac{\pi}{N}
-   \sum_{j=0}^{N/2-1}{H\left[ \cos\left( \frac{\pi}{N}\,j + \frac{\pi}{2N} \right) \right]}
- \f]
+The integral is evaluated numerically by quadrature.
 
- where
+\sa Quadrature, detail::quad_integrator
 
- \f[
- H(u) = \sqrt{\frac{1-u^2}{F(x_0/u)}}
- \f]
-
-As this is a computationally costly operation, the scattering integrals are typically pre-calculated and tabulated
-for use in Monte-Carlo codes. 
-
-## Cross-section and stopping power
+### Cross-section and stopping power
 
 The differential cross-section in the center-of-mass system is given by
 
@@ -78,6 +66,8 @@ Using the expression for the recoil energy \f$ T\f$ of the struck atom
 and noting that
 \f[
   \Omega(\theta) = 2\pi (1-\cos\theta) = 4\pi\sin^2\theta/2
+  \quad \Rightarrow \quad 
+  T = \frac{\gamma \, E}{4\pi}\Omega
 \f]
 we obtain the differential cross-section with respect to recoil energy: 
 \f[
@@ -86,27 +76,25 @@ we obtain the differential cross-section with respect to recoil energy:
 and the nuclear stopping cross-section
 \f[
   S_n(E) = \int_0^{\gamma \, E}{T\,d\sigma(E,T)} = 
-  \frac{\gamma E}{4\pi} \int_0^{4\pi}{\Omega \frac{d\sigma}{d\Omega}\,d\Omega} =
-  \gamma E\, \langle \sigma\cdot\Omega \rangle.
+  \gamma E\; \frac{1}{4\pi} \int_0^{4\pi}{\Omega \frac{d\sigma}{d\Omega}\,d\Omega}.
 \f]
 The stopping power is \f$ -dE/dx = N\,S_n(E) \f$, where \f$ N \f$ denotes the atomic density.
 
 The *reduced* stopping cross-section is
 \f[
-  s_n(\epsilon) = \frac{\epsilon}{\pi a^2 \gamma E} S_n(E) = 
-  \frac{\epsilon}{\pi a^2}\, \langle \sigma\Omega \rangle.
+  s_n(\epsilon) = \frac{\epsilon}{\pi a^2 \gamma E} S_n(E).
 \f]
 
-## Analytical results for the un-screened Coulomb potential
+### Analytical results for the un-screened Coulomb potential
 
-For the un-screened Coulomb potential the analytical expressions for the above quantities are (\f$ a=1\f$):
+For the un-screened Coulomb potential the exact analytical expressions for the above quantities are (\f$ a=1\f$):
 
-- Distance of closest approach
+- Apsis
 \f[
   x_0 = \frac{1}{2\epsilon} + \sqrt{\frac{1}{(2\epsilon)^2} + s^2}
 \f]
 
-- The closest approach for head-on collisions (s=0)
+- Apsis for head-on collisions (s=0)
 \f[
   b_0 = \frac{a}{\epsilon} = \frac{Z_1 Z_2 e^2}{E_{CM}}
 \f]
@@ -126,10 +114,11 @@ For the un-screened Coulomb potential the analytical expressions for the above q
 
 The stopping cross-section diverges in this case. However, setting a mininum cutoff \f$ T_m \f$ in the recoil energy it is obtained that
 \f[
-  \sigma_0(T_m) = \frac{\pi b_0^2}{4} \left( \frac{\gamma E}{T} - 1\right)
+  \sigma_0 = \frac{\pi b_0^2}{4} \left( \frac{\gamma E}{T_m} - 1\right)
 \f]
 \f[
   \langle T \rangle = T_m \log (\gamma E / T_m)
 \f]
+
 
 
