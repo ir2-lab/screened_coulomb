@@ -641,6 +641,7 @@ public:
      *
      * @param e reduced energy
      * @param thetaCM scattering angle (rad) in center-of-mass system
+     * @param tol abs. tolerance for the value of s. Defaults to the machine epsilon.
      * @return the reduced impact parameter
      */
     static double find_s(double e, double thetaCM,
@@ -657,7 +658,10 @@ public:
      *
      * @param e is the reduced energy
      * @param thetaCM is the center-of-mass scattering angle (rad)
+     * @param tol abs. tolerance for finding \f$ s=s(\epsilon,\theta) \f$.
      * @return the reduced cross-section
+     *
+     * \sa find_s()
      */
     static double crossSection(double e, double thetaCM,
                                double tol = std::numeric_limits<double>::epsilon());
@@ -755,14 +759,15 @@ private:
  * @tparam ScreeningType The type of screening function
  * @tparam QuadType The quadrature method employed for the scattering integrals
  */
-template <Screening ScreeningType, Quadrature QuadType = Quadrature::GaussChebyshev>
-class xs_lab : public xs_cms<ScreeningType, QuadType>
+template <Screening ScreeningType, Quadrature QuadType = Quadrature::GaussChebyshev,
+          int N = detail::__preferredQuadOrder__<QuadType>()>
+class xs_lab : public xs_cms<ScreeningType, QuadType, N>
 {
-    using xs_cms<ScreeningType, QuadType>::screeningLength;
-    using xs_cms<ScreeningType, QuadType>::sin2Thetaby2;
-    using xs_cms<ScreeningType, QuadType>::find_s;
-    using xs_cms<ScreeningType, QuadType>::crossSection;
-    using xs_cms<ScreeningType, QuadType>::sn;
+    using xs_cms<ScreeningType, QuadType, N>::screeningLength;
+    using xs_cms<ScreeningType, QuadType, N>::sin2Thetaby2;
+    using xs_cms<ScreeningType, QuadType, N>::find_s;
+    using xs_cms<ScreeningType, QuadType, N>::crossSection;
+    using xs_cms<ScreeningType, QuadType, N>::sn;
 
 protected:
     double screening_length_; /* screening length [nm] */
@@ -1016,11 +1021,15 @@ double xs_cms<ScreeningType, QuadType, N>::crossSection(double e, double thetaCM
     double s = find_s(e, thetaCM, tol);
 
     if (s < 1.e-6) { // quasi head on collision
-        double dth = pi_minus_theta(e, s);
+
         if (s == 0.) {
-            s = 1.e-30;
-            dth = pi_minus_theta(e, s);
+            double ds = 1.e-9;
+            double dth = pi_minus_theta(e, ds);
+            double dsdth = ds / dth;
+            return dsdth * dsdth;
         }
+
+        double dth = pi_minus_theta(e, s);
         double ds = s * 0.001;
         double dsdTheta = (12.0 * ds)
                 / (-pi_minus_theta(e, s + 2.0 * ds) + 8.0 * pi_minus_theta(e, s + ds)
@@ -1074,6 +1083,7 @@ inline double xs_cms<Screening::None, Quadrature::None, 0>::sn(double, double)
 
 // xs_cms template specializations for ZBL + MAGIC
 
+// this is an approximation for ZBL stopping cross-section
 template <>
 inline double xs_cms<Screening::ZBL, Quadrature::Magic, 0>::sn(double e, double theta_max)
 {
@@ -1174,9 +1184,9 @@ detail::theta_integrator<ScreeningType, Quadrature::Magic, N>::zbl_and_deriv(dou
 
 // xs_lab implementation
 
-template <Screening ScreeningType, Quadrature QuadType>
-void xs_lab<ScreeningType, QuadType>::scatter(double E, double S, double &recoil_erg,
-                                              double &theta) const
+template <Screening ScreeningType, Quadrature QuadType, int N>
+void xs_lab<ScreeningType, QuadType, N>::scatter(double E, double S, double &recoil_erg,
+                                                 double &theta) const
 {
     double e = E * red_E_conv_;
     double sin2thetaby2 = sin2Thetaby2(e, S / screening_length_);
@@ -1187,8 +1197,8 @@ void xs_lab<ScreeningType, QuadType>::scatter(double E, double S, double &recoil
     theta = atan(sintheta / (costheta + mass_ratio_));
 }
 
-template <Screening ScreeningType, Quadrature QuadType>
-double xs_lab<ScreeningType, QuadType>::find_p(double E, double T) const
+template <Screening ScreeningType, Quadrature QuadType, int N>
+double xs_lab<ScreeningType, QuadType, N>::find_p(double E, double T) const
 {
     double thetaCM = 1.0 * T / E / gamma_;
     if (thetaCM > 1.0)
@@ -1199,8 +1209,8 @@ double xs_lab<ScreeningType, QuadType>::find_p(double E, double T) const
     return find_s(E * red_E_conv_, thetaCM) * screening_length_;
 }
 
-template <Screening ScreeningType, Quadrature QuadType>
-double xs_lab<ScreeningType, QuadType>::crossSection(double E, double T) const
+template <Screening ScreeningType, Quadrature QuadType, int N>
+double xs_lab<ScreeningType, QuadType, N>::crossSection(double E, double T) const
 {
     double thetaCM = T / E / gamma_;
     if (thetaCM > 1.0)
@@ -1209,14 +1219,14 @@ double xs_lab<ScreeningType, QuadType>::crossSection(double E, double T) const
     return crossSection(E * red_E_conv_, thetaCM) * 4 * sig0_ / E / gamma_;
 }
 
-template <Screening ScreeningType, Quadrature QuadType>
-double xs_lab<ScreeningType, QuadType>::Sn(double E) const
+template <Screening ScreeningType, Quadrature QuadType, int N>
+double xs_lab<ScreeningType, QuadType, N>::Sn(double E) const
 {
     return sn(E * red_E_conv_) * sig0_ * gamma_ / red_E_conv_;
 }
 
-template <Screening ScreeningType, Quadrature QuadType>
-double xs_lab<ScreeningType, QuadType>::Sn(double E, double T1) const
+template <Screening ScreeningType, Quadrature QuadType, int N>
+double xs_lab<ScreeningType, QuadType, N>::Sn(double E, double T1) const
 {
     double theta_max = 1.0 * T1 / E / gamma_;
     if (theta_max >= 1.)
