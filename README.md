@@ -2,7 +2,9 @@
 
 Header-only C++ library for Screened Coulomb scattering calculations.
 
-### Features
+Documentation at https://ir2-lab.github.io/screened_coulomb/
+
+## Features
 
 - All code in a single header file.
 - Different types of screened potentials implemented
@@ -17,11 +19,11 @@ Header-only C++ library for Screened Coulomb scattering calculations.
   - Approximate analytic MAGIC formula
   - Exact results for the un-screened potential
 
-### Installation
+## Installation
 
 Just copy and include `include/screened_coulomb.h` in your project.
 
-### Usage
+## Usage
 
 `test/test.cpp` contains some tests and example code.
 

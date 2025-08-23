@@ -5,6 +5,8 @@
 #include <chrono>
 #include <random>
 
+/** \file */
+
 using namespace std::chrono;
 using namespace std;
 

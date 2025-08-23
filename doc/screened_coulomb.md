@@ -1,7 +1,7 @@
 # Short physics intro {#screened-coulomb}
     
 
-### Screened Coulomb potential definition
+## Screened Coulomb potential definition
 
 The interaction between a projectile (atomic number \f$Z_1\f$, mass \f$m_1\f$) and a target atom \f$(Z_2,m_2)\f$ can be described by the screened Coulomb potential 
 $$
@@ -24,7 +24,7 @@ $$
 $$
 \ref screened_coulomb provides several different screening functions of this type, which can be selected by the \ref Screening enumerator.
 
-### Scattering angle
+## Scattering angle
 
 The scattering of the incoming projectile of energy \f$E\f$ is elastic, and can be adequately described by classical kinematics.
 
@@ -47,7 +47,7 @@ The integral is evaluated numerically by quadrature.
 
 \sa Quadrature, detail::quad_integrator
 
-### Cross-section and stopping power
+## Cross-section and stopping power
 
 The differential cross-section in the center-of-mass system is given by
 
@@ -85,7 +85,7 @@ The *reduced* stopping cross-section is
   s_n(\epsilon) = \frac{\epsilon}{\pi a^2 \gamma E} S_n(E).
 \f]
 
-### Analytical results for the un-screened Coulomb potential
+## Analytical results for the un-screened Coulomb potential
 
 For the un-screened Coulomb potential the exact analytical expressions for the above quantities are (\f$ a=1\f$):
 
@@ -96,7 +96,7 @@ For the un-screened Coulomb potential the exact analytical expressions for the a
 
 - Apsis for head-on collisions (s=0)
 \f[
-  b_0 = \frac{a}{\epsilon} = \frac{Z_1 Z_2 e^2}{E_{CM}}
+  b_0 = \frac{1}{\epsilon} = \frac{Z_1 Z_2 e^2}{E_{CM}} = = \frac{Z_1 Z_2 e^2 (m_1/m_2+1)}{E}
 \f]
 
 - Scattering angle
@@ -106,7 +106,7 @@ For the un-screened Coulomb potential the exact analytical expressions for the a
 
 - Differential cross-section
 \f[
-  \frac{d\sigma}{d\Omega} = \frac{a^2}{16 \epsilon^2}\, \frac{1}{\sin^4 (\theta/2)} = \frac{b_0^2}{16} \frac{1}{\sin^4 (\theta/2)}
+  \frac{d\sigma}{d\Omega} = \frac{1}{16 \epsilon^2}\, \frac{1}{\sin^4 (\theta/2)} = \frac{b_0^2}{16} \frac{1}{\sin^4 (\theta/2)}
 \f]
 \f[
   \frac{d\sigma}{dT} = = \frac{\pi b_0^2}{4} \frac{\gamma E}{T^2}
