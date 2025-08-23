@@ -404,7 +404,7 @@ template <Screening ScreeningType, Quadrature QuadType, int N>
 struct theta_integrator
 {
     /**
-     * @brief Returns the value of \fS \theta \fS
+     * @brief Returns the scattering angle
      * @param e reduced energy
      * @param s reduced impact parameter
      * @param x0 apsis of the trajectory
@@ -574,7 +574,7 @@ static double bessel_k1(double x)
  * @tparam
  *   N specifies the quadrature order
  *
- * @sa \ref detail::quad_integrator
+ * @sa \ref detail::theta_integrator
  */
 template <Screening ScreeningType, Quadrature QuadType = Quadrature::GaussChebyshev,
           int N = detail::__preferredQuadOrder__<QuadType>()>
