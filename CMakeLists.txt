@@ -7,6 +7,10 @@ project(screened_coulomb
         DESCRIPTION "Header-only C++ library for Screened Coulomb scattering calculations"
         HOMEPAGE_URL https://gitlab.com/ir2-lab/
         LANGUAGES CXX)
+        
+# specify the C++ standard
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED True)
 
 ##
 ## MAIN_PROJECT CHECK
