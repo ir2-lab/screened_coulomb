@@ -12,25 +12,25 @@ project(screened_coulomb
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
-##
-## MAIN_PROJECT CHECK
-## determine if it is built as a subproject (using add_subdirectory) or if it is the main project
-##
-set(MAIN_PROJECT OFF)
-if (CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
-    set(MAIN_PROJECT ON)
-endif()
+include(GNUInstallDirs)
 
 add_library(screened_coulomb INTERFACE)
 
 target_include_directories(
-    screened_coulomb
-    INTERFACE
-    include
+  screened_coulomb
+  INTERFACE 
+  ${CMAKE_INSTALL_INCLUDEDIR})
+
+target_sources(screened_coulomb
+  PUBLIC FILE_SET HEADERS
+  BASE_DIRS ${PROJECT_SOURCE_DIR}/include
+  FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/screened_coulomb.h
 )
 
-if(MAIN_PROJECT)
-  add_executable(test test/test.cpp)
-  target_link_libraries(test screened_coulomb)
-endif()
+add_executable(test EXCLUDE_FROM_ALL test/test.cpp )
+target_link_libraries(test screened_coulomb)
 
+# install the headers that we specified with FILE_SET (header files for the user to include in their projects)
+install(TARGETS screened_coulomb
+  FILE_SET HEADERS
+)
