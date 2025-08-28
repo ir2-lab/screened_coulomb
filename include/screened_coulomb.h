@@ -1192,9 +1192,9 @@ void xs_lab<ScreeningType, QuadType, N>::scatter(double E, double S, double &rec
     double sin2thetaby2 = sin2Thetaby2(e, S / screening_length_);
     recoil_erg = E * gamma_ * sin2thetaby2;
     /* convert scattering angle to lab frame of reference: */
-    double costheta = 1.f - 2 * sin2thetaby2;
-    double sintheta = std::sqrt(1.f - costheta * costheta);
-    theta = atan(sintheta / (costheta + mass_ratio_));
+    double costheta = 1.0 - 2.0 * sin2thetaby2;
+    double sintheta = std::sqrt(1.0 - costheta * costheta);
+    theta = std::atan2(sintheta, (costheta + mass_ratio_));
 }
 
 template <Screening ScreeningType, Quadrature QuadType, int N>
